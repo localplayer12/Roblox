@@ -618,7 +618,7 @@ local CoreGui = getService("CoreGui")
 
 -- Interface Management
 
-local Rayfield = useStudio and script.Parent:FindFirstChild('Rayfield') or loadstring(request('https://raw.githubusercontent.com/localplayer12/Roblox/refs/heads/main/Interface'))()
+local Rayfield = useStudio and script.Parent:FindFirstChild('Rayfield') or loadstring(game:HttpGet('https://raw.githubusercontent.com/localplayer12/Roblox/refs/heads/main/Interface'))()
 local buildAttempts = 0
 local correctBuild = false
 local warned
@@ -638,7 +638,7 @@ repeat
 		warned = true
 	end
 
-	toDestroy, Rayfield = Rayfield, useStudio and script.Parent:FindFirstChild('Rayfield') or loadstring(request('https://raw.githubusercontent.com/localplayer12/Roblox/refs/heads/main/Interface'))()
+	toDestroy, Rayfield = Rayfield, useStudio and script.Parent:FindFirstChild('Rayfield') or loadstring(game:HttpGet('https://raw.githubusercontent.com/localplayer12/Roblox/refs/heads/main/Interface'))()
 	if toDestroy and not useStudio then toDestroy:Destroy() end
 
 	buildAttempts = buildAttempts + 1
