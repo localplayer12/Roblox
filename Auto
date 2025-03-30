@@ -1,5 +1,5 @@
 -- Auto Collect and Server Hop Script for Jujutsu Infinite
-
+wait(3)
 
 repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer and game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 
