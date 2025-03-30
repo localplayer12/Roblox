@@ -1,172 +1,170 @@
--- Auto Collect and Server Hop Script for Jujutsu Infinite
-wait(3)
+-- Improved Auto Collect and Server Hop Script for Jujutsu Infinite
+wait(5)
+-- Wait until the game and character are fully loaded
+local function waitForCharacter()
+    while not (game:IsLoaded() and game.Players.LocalPlayer and game.Players.LocalPlayer.Character) do
+        task.wait()
+    end
+    local character = game.Players.LocalPlayer.Character
+    while not character:FindFirstChild("HumanoidRootPart") do
+        task.wait()
+    end
+    return character
+end
 
-repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer and game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-
+local character = waitForCharacter()
 local player = game.Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
 
+-- Optionally disable menu if ForceField exists
 if character:FindFirstChild("ForceField") then
     game:GetService("ReplicatedStorage").Remotes.Server.Combat.ToggleMenu:FireServer(false)
 end
 
+--------------------------------------------------------------------------------
+-- Server Hop Functionality
+--------------------------------------------------------------------------------
+
 local function serverHop()
-    local Time = 1 -- seconds
     local PlaceID = game.PlaceId
     local AllIDs = {}
-    local foundAnything = ""
-    local actualHour = os.date("!*t").hour
+    local nextPageCursor = ""
+    local currentHour = os.date("!*t").hour
+
+    local HttpService = game:GetService("HttpService")
+    local TeleportService = game:GetService("TeleportService")
     
-    function TPReturner()
-        local Site
-        if foundAnything == "" then
-            Site = game:GetService("HttpService"):JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100'))
-        else
-            Site = game:GetService("HttpService"):JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
+    local function fetchServerData(cursor)
+        local url = "https://games.roblox.com/v1/games/" .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100"
+        if cursor and cursor ~= "" then
+            url = url .. "&cursor=" .. cursor
         end
-        
-        local ID = ""
-        if Site.nextPageCursor and Site.nextPageCursor ~= "null" and Site.nextPageCursor ~= nil then
-            foundAnything = Site.nextPageCursor
-        end
-        
-        local num = 0
-        for i, v in pairs(Site.data) do
-            local Possible = true
-            ID = tostring(v.id)
-            if tonumber(v.maxPlayers) > tonumber(v.playing) then
-                for _, Existing in pairs(AllIDs) do
-                    if num ~= 0 then
-                        if ID == tostring(Existing) then
-                            Possible = false
+        local response = game:HttpGet(url)
+        return HttpService:JSONDecode(response)
+    end
+
+    local function attemptTeleport(serverData)
+        for _, server in ipairs(serverData.data) do
+            local serverId = tostring(server.id)
+            if tonumber(server.playing) < tonumber(server.maxPlayers) then
+                -- Check if this server has been used before. If first iteration,
+                -- reset the list if the stored hour is different.
+                local skipServer = false
+                for idx, stored in ipairs(AllIDs) do
+                    if idx == 1 then
+                        if tonumber(stored) ~= currentHour then
+                            AllIDs = { currentHour }
                         end
-                    else
-                        if tonumber(actualHour) ~= tonumber(Existing) then
-                            local delFile = pcall(function()
-                                delfile("NotSameServers.json")
-                                AllIDs = {}
-                                table.insert(AllIDs, actualHour)
-                            end)
-                        end
+                    elseif serverId == stored then
+                        skipServer = true
+                        break
                     end
-                    num = num + 1
                 end
-                
-                if Possible == true then
-                    table.insert(AllIDs, ID)
-                    wait()
+
+                if not skipServer then
+                    table.insert(AllIDs, serverId)
                     pcall(function()
-                        writefile("NotSameServers.json", game:GetService('HttpService'):JSONEncode(AllIDs))
-                        wait()
-                        game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, ID, game.Players.LocalPlayer)
+                        writefile("NotSameServers.json", HttpService:JSONEncode(AllIDs))
                     end)
-                    wait(2) -- Reduced from 4 to 2 for faster hopping
+                    TeleportService:TeleportToPlaceInstance(PlaceID, serverId, player)
+                    task.wait(2) -- Wait briefly after teleport attempt
                 end
             end
         end
     end
-    
+
+    -- Loop through pages until a valid server is found
     pcall(function()
         while task.wait() do
-            TPReturner()
-        end;
+            local serverData = fetchServerData(nextPageCursor)
+            nextPageCursor = serverData.nextPageCursor or ""
+            attemptTeleport(serverData)
+        end
     end)
 end
 
+--------------------------------------------------------------------------------
+-- Auto-Collect Functionality
+--------------------------------------------------------------------------------
 
--- Auto collect functionality
 local function collectItems()
-    local player = game.Players.LocalPlayer
+    local collectedCount = 0
+    local ws = game:GetService("Workspace")
     local character = player.Character or player.CharacterAdded:Wait()
+
+    local hrp = character:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return 0 end
+
+    -- Try to get the drops folder from a known location
+    local dropsFolder = ws:FindFirstChild("Objects") and ws.Objects:FindFirstChild("Drops") or ws:FindFirstChild("Drops")
     
-    -- Wait for character to be fully loaded if needed
-    if not character:FindFirstChild("HumanoidRootPart") then
-        repeat wait(0.1) 
-        until character:FindFirstChild("HumanoidRootPart")
-    end
-    
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return 0 end
-    
-    local drops = game:GetService("Workspace"):FindFirstChild("Objects")
-    local itemsCollected = 0
-    
-    -- Collect from Object Drops
-    if drops then
-        local dropsFolder = drops:FindFirstChild("Drops") or workspace:FindFirstChild("Drops")
-        
-        if dropsFolder then
-            for _, descendant in ipairs(dropsFolder:GetDescendants()) do
-                if descendant:IsA("ProximityPrompt") then
-                    local parentObject = descendant.Parent
-                    if parentObject then
-                        local targetPosition
-                        
-                        if parentObject:IsA("BasePart") then
-                            targetPosition = parentObject.CFrame
-                        elseif parentObject:IsA("Model") and parentObject.PrimaryPart then
-                            targetPosition = parentObject.PrimaryPart.CFrame
-                        else
-                            for _, child in pairs(parentObject:GetChildren()) do
-                                if child:IsA("BasePart") then
-                                    targetPosition = child.CFrame
-                                    break
-                                end
-                            end
-                        end
-                        
-                        if targetPosition then
-                            repeat task.wait()
-                                -- Check if character still exists (in case of death during collection)
-                                character = player.Character
-                                if not character then
-                                    character = player.CharacterAdded:Wait()
-                                    humanoidRootPart = character:WaitForChild("HumanoidRootPart")
-                                end
-                                
-                                humanoidRootPart.CFrame = targetPosition - Vector3.new(0, 7, 0)
-                                fireproximityprompt(descendant)
-                            until not descendant:IsDescendantOf(workspace)
-                            itemsCollected = itemsCollected + 1
+    if dropsFolder then
+        for _, prompt in ipairs(dropsFolder:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") then
+                local parentObject = prompt.Parent
+                local targetCFrame = nil
+
+                if parentObject:IsA("BasePart") then
+                    targetCFrame = parentObject.CFrame
+                elseif parentObject:IsA("Model") and parentObject.PrimaryPart then
+                    targetCFrame = parentObject.PrimaryPart.CFrame
+                else
+                    for _, child in ipairs(parentObject:GetChildren()) do
+                        if child:IsA("BasePart") then
+                            targetCFrame = child.CFrame
+                            break
                         end
                     end
+                end
+
+                if targetCFrame then
+                    -- Move the character close to the drop and fire its prompt until it disappears
+                    repeat
+                        task.wait()
+                        -- Ensure character exists
+                        if not player.Character then
+                            player.Character = player.CharacterAdded:Wait()
+                            hrp = player.Character:WaitForChild("HumanoidRootPart")
+                        end
+                        hrp.CFrame = targetCFrame - Vector3.new(0, 7, 0)
+                        fireproximityprompt(prompt)
+                    until not prompt:IsDescendantOf(ws)
+                    collectedCount = collectedCount + 1
                 end
             end
         end
     end
-    return itemsCollected
+
+    return collectedCount
 end
 
--- Handle character death
+--------------------------------------------------------------------------------
+-- Handle Character Death
+--------------------------------------------------------------------------------
+
 local function setupDeathHandler()
-    local player = game.Players.LocalPlayer
     local character = player.Character or player.CharacterAdded:Wait()
-    
     local humanoid = character:WaitForChild("Humanoid")
     humanoid.Died:Connect(function()
-        -- Wait for respawn
         player.CharacterAdded:Wait()
-        -- Character has respawned
         print("Character respawned")
     end)
 end
 
--- Main loop
+--------------------------------------------------------------------------------
+-- Main Loop
+--------------------------------------------------------------------------------
+
 spawn(function()
-    -- Setup death handler
     setupDeathHandler()
-    game.Players.LocalPlayer.CharacterAdded:Connect(setupDeathHandler)
-    
-    local noItemsCount = 0
+    player.CharacterAdded:Connect(setupDeathHandler)
     
     while true do
         local itemsCollected = collectItems()
-        
         if itemsCollected > 0 then
-            noItemsCount = 0
-            print(itemsCollected .. " items have been collected!")
+            print(itemsCollected .. " items collected!")
             serverHop()
         end
+        task.wait(1)
     end
 end)
 
