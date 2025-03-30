@@ -59,7 +59,7 @@ local function serverHop()
     
     -- Main server hop loop with timeout
     local startTime = tick()
-    local timeout = 30 -- Give up after 30 seconds and use forced teleport
+    local timeout = 10 -- Give up after 30 seconds and use forced teleport
     
     spawn(function()
         while not usedTeleportMethod and tick() - startTime < timeout do
@@ -69,22 +69,28 @@ local function serverHop()
             local validServers = {}
             for _, server in ipairs(servers) do
                 local serverId = tostring(server.id)
-                if not triedServers[serverId] and server.playing < server.maxPlayers and server.ping < 150 then
+                -- Add a safety margin - only consider servers with at least 2 available slots
+                if not triedServers[serverId] and server.playing < (server.maxPlayers - 2) and server.ping < 150 then
                     table.insert(validServers, server)
                 end
             end
             
-            -- Sort by player count (descending) to find active servers
+            -- Sort by available slots (descending) to find servers with more space
             table.sort(validServers, function(a, b)
-                return a.playing > b.playing
+                local aAvailable = a.maxPlayers - a.playing
+                local bAvailable = b.maxPlayers - b.playing
+                return aAvailable > bAvailable
             end)
             
             -- Try to teleport to each server
             for _, server in ipairs(validServers) do
                 local serverId = tostring(server.id)
                 triedServers[serverId] = true
-                print("Teleporting to server with " .. server.playing .. " players...")
                 
+                -- Double check server isn't full before attempting
+                local success = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(PlaceID, serverId, Players.LocalPlayer)
+                end)
                 local success = pcall(function()
                     TeleportService:TeleportToPlaceInstance(PlaceID, serverId, Players.LocalPlayer)
                 end)
