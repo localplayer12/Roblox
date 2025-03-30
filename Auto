@@ -179,3 +179,4 @@ spawn(function()
 end)
 
 print("Auto collect and server hop script is running!")
+queue_on_teleport('loadstring(game:HttpGet("https://raw.githubusercontent.com/localplayer12/Roblox/refs/heads/main/Auto", true))()')
