@@ -1,5 +1,5 @@
--- Improved Auto Collect and Server Hop Script for Jujutsu Infinite
-wait(5)
+-- Improved Auto Collect and Server Hop Script
+
 -- Wait until the game and character are fully loaded
 local function waitForCharacter()
     while not (game:IsLoaded() and game.Players.LocalPlayer and game.Players.LocalPlayer.Character) do
@@ -25,6 +25,7 @@ end
 --------------------------------------------------------------------------------
 
 local function serverHop()
+    print("Attempting to server hop...")
     local PlaceID = game.PlaceId
     local AllIDs = {}
     local nextPageCursor = ""
@@ -85,7 +86,6 @@ end
 --------------------------------------------------------------------------------
 -- Auto-Collect Functionality
 --------------------------------------------------------------------------------
-
 local function collectItems()
     local collectedCount = 0
     local ws = game:GetService("Workspace")
@@ -117,7 +117,9 @@ local function collectItems()
                 end
 
                 if targetCFrame then
-                    -- Move the character close to the drop and fire its prompt until it disappears
+                    -- Move the character close to the drop and fire its prompt repeatedly until it disappears or times out
+                    local timeout = 5 -- seconds
+                    local startTime = os.clock()
                     repeat
                         task.wait()
                         -- Ensure character exists
@@ -127,6 +129,10 @@ local function collectItems()
                         end
                         hrp.CFrame = targetCFrame - Vector3.new(0, 4, 0)
                         fireproximityprompt(prompt)
+                        if os.clock() - startTime > timeout then
+                            warn("Timed out attempting to collect an item.")
+                            break
+                        end
                     until not prompt:IsDescendantOf(ws)
                     collectedCount = collectedCount + 1
                 end
@@ -136,6 +142,7 @@ local function collectItems()
 
     return collectedCount
 end
+
 
 --------------------------------------------------------------------------------
 -- Handle Character Death
