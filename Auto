@@ -89,7 +89,6 @@ local function collectItems()
     if not humanoidRootPart then return 0 end
     
     local drops = game:GetService("Workspace"):FindFirstChild("Objects")
-    local originalPosition = humanoidRootPart.CFrame
     local itemsCollected = 0
     
     -- Collect from Object Drops
@@ -135,13 +134,6 @@ local function collectItems()
             end
         end
     end
-    
-    -- Return to original position
-    character = player.Character
-    if character and character:FindFirstChild("HumanoidRootPart") then
-        character.HumanoidRootPart.CFrame = originalPosition
-    end
-    
     return itemsCollected
 end
 
