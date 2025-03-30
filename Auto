@@ -125,7 +125,7 @@ local function collectItems()
                             player.Character = player.CharacterAdded:Wait()
                             hrp = player.Character:WaitForChild("HumanoidRootPart")
                         end
-                        hrp.CFrame = targetCFrame - Vector3.new(0, 7, 0)
+                        hrp.CFrame = targetCFrame - Vector3.new(0, 4, 0)
                         fireproximityprompt(prompt)
                     until not prompt:IsDescendantOf(ws)
                     collectedCount = collectedCount + 1
