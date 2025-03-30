@@ -1,4 +1,4 @@
--- Improved Auto Collect and Server Hop Script for Jujutsu Infinite
+-- Improved Auto Collect and Server Hop Script
 
 -- Wait until the game and character are fully loaded
 local function waitForCharacter()
@@ -35,65 +35,79 @@ end
 --------------------------------------------------------------------------------
 -- Server Hop Functionality
 --------------------------------------------------------------------------------
-
 local function serverHop()
-    print("Attempting to server hop...")
+    print("Server hopping...")
     local PlaceID = game.PlaceId
-    local AllIDs = {}
-    local nextPageCursor = ""
-    local currentHour = os.date("!*t").hour
-
     local HttpService = game:GetService("HttpService")
     local TeleportService = game:GetService("TeleportService")
+    local Players = game:GetService("Players")
     
-    local function fetchServerData(cursor)
-        local url = "https://games.roblox.com/v1/games/" .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100"
-        if cursor and cursor ~= "" then
-            url = url .. "&cursor=" .. cursor
-        end
-        local response = game:HttpGet(url)
-        return HttpService:JSONDecode(response)
+    -- Keep track of servers we've already tried
+    local triedServers = {}
+    local usedTeleportMethod = false
+    
+    -- Function to fetch server data
+    local function fetchServers()
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(
+                "https://games.roblox.com/v1/games/" .. PlaceID .. "/servers/Public?sortOrder=Desc&limit=100"
+            ))
+        end)
+        
+        if success then return result.data else return {} end
     end
-
-    local function attemptTeleport(serverData)
-        for _, server in ipairs(serverData.data) do
-            local serverId = tostring(server.id)
-            if tonumber(server.playing) < tonumber(server.maxPlayers) then
-                -- Check if this server has been used before. If first iteration,
-                -- reset the list if the stored hour is different.
-                local skipServer = false
-                for idx, stored in ipairs(AllIDs) do
-                    if idx == 1 then
-                        if tonumber(stored) ~= currentHour then
-                            AllIDs = { currentHour }
-                        end
-                    elseif serverId == stored then
-                        skipServer = true
-                        break
-                    end
-                end
-
-                if not skipServer then
-                    table.insert(AllIDs, serverId)
-                    pcall(function()
-                        writefile("NotSameServers.json", HttpService:JSONEncode(AllIDs))
-                    end)
-                    TeleportService:TeleportToPlaceInstance(PlaceID, serverId, player)
-                    task.wait(2) -- Wait briefly after teleport attempt
+    
+    -- Main server hop loop with timeout
+    local startTime = tick()
+    local timeout = 30 -- Give up after 30 seconds and use forced teleport
+    
+    spawn(function()
+        while not usedTeleportMethod and tick() - startTime < timeout do
+            local servers = fetchServers()
+            
+            -- Filter and sort servers
+            local validServers = {}
+            for _, server in ipairs(servers) do
+                local serverId = tostring(server.id)
+                if not triedServers[serverId] and server.playing < server.maxPlayers and server.ping < 150 then
+                    table.insert(validServers, server)
                 end
             end
+            
+            -- Sort by player count (descending) to find active servers
+            table.sort(validServers, function(a, b)
+                return a.playing > b.playing
+            end)
+            
+            -- Try to teleport to each server
+            for _, server in ipairs(validServers) do
+                local serverId = tostring(server.id)
+                triedServers[serverId] = true
+                print("Teleporting to server with " .. server.playing .. " players...")
+                
+                local success = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(PlaceID, serverId, Players.LocalPlayer)
+                end)
+                
+                if success then
+                    usedTeleportMethod = true
+                    return
+                end
+                task.wait(0.5) -- Brief wait between attempts
+            end
+            
+            task.wait(1)
         end
-    end
-
-    -- Loop through pages until a valid server is found
-    pcall(function()
-        while task.wait() do
-            local serverData = fetchServerData(nextPageCursor)
-            nextPageCursor = serverData.nextPageCursor or ""
-            attemptTeleport(serverData)
+        
+        -- Fallback teleport method if we couldn't find a server
+        if not usedTeleportMethod then
+            print("Server hop timed out, using fallback teleport...")
+            TeleportService:Teleport(PlaceID, Players.LocalPlayer)
+            usedTeleportMethod = true
         end
     end)
 end
+
 
 --------------------------------------------------------------------------------
 -- Auto-Collect Functionality
@@ -203,6 +217,24 @@ spawn(function()
         task.wait(1)
     end
 end)
+
+spawn(function()
+    while task.wait() do
+        local dropsFolder = game:GetService("Workspace").Objects and game:GetService("Workspace").Objects:FindFirstChild("Drops")
+        if dropsFolder then
+            if #dropsFolder:GetChildren() == 0 then
+                print("No drops available, server hopping...")
+                serverHop()
+            else
+                local itemsCollected = collectItems()
+                if itemsCollected > 0 then
+                    print(itemsCollected .. " items collected!")
+                    serverHop()
+                end
+            end
+        end
+    end
+end);    
 
 print("Auto collect and server hop script is running!")
 queue_on_teleport('loadstring(game:HttpGet("https://raw.githubusercontent.com/localplayer12/Roblox/refs/heads/main/Auto", true))()')
